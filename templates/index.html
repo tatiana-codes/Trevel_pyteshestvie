@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Holy Cow Travel</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="hero">
+  <nav class="navbar">
+
+    <div class="logo">
+        HOLY COW TRAVEL
+    </div>
+
+    <ul class="menu">
+        <li><a href="#tours">Туры</a></li>
+        <li><a href="#chat">ИИ-консультант</a></li>
+    </ul>
+
+    <a href="/admin/login" class="admin-btn" title="Вход администратора">
+        👤
+    </a>
+
+</nav>
+  <div class="hero-content">
+    <p>Путешествия, подобранные под вас</p>
+    <h1>Откройте мир вместе с нами</h1>
+    <a class="button" href="#chat">Подобрать тур</a>
+  </div>
+</header>
+
+<main>
+  <section id="tours">
+    <p class="eyebrow">Популярные направления</p>
+    <h2>Туры для ярких впечатлений</h2>
+    <div class="tour-grid">
+      {% for tour in tours %}
+      <article class="card">
+        <img src="{{ tour.image or 'https://images.unsplash.com/photo-1488646953014-85cb44e25828' }}" alt="{{ tour.title }}">
+        <div class="card-body">
+          <span>{{ tour.country }}</span>
+          <h3>{{ tour.title }}</h3>
+          <p>{{ tour.description }}</p>
+          <strong>{{ tour.price }}</strong>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section id="chat" class="chat-section">
+    <div>
+      <p class="eyebrow">Персональный подбор</p>
+      <h2>Расскажите ИИ-менеджеру о путешествии мечты</h2>
+      <p>Например: «Меня зовут Анна. Хочу в Турцию в августе на двоих, бюджет 180 000 рублей».</p>
+    </div>
+    <div class="chat-box">
+      <div id="messages" class="messages">
+        <div class="message bot">Здравствуйте! Куда вы хотели бы отправиться?</div>
+      </div>
+      <form id="chatForm">
+        <input id="messageInput" placeholder="Напишите сообщение..." autocomplete="off" required>
+        <button>Отправить</button>
+      </form>
+    </div>
+  </section>
+</main>
+
+<footer>© 2026 Holy Cow Travel · <a href="/admin/login">Администратор</a></footer>
+<script src="/static/app.js"></script>
+</body>
+</html>

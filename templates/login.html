@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Вход администратора</title><link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="admin-page">
+<form class="login-card" method="post">
+  <h1>Вход администратора</h1>
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}<p class="error">{{ messages[0] }}</p>{% endif %}
+  {% endwith %}
+  <input name="login" placeholder="Логин" required>
+  <input name="password" type="password" placeholder="Пароль" required>
+  <button>Войти</button>
+  <a href="/">Вернуться на сайт</a>
+</form>
+</body>
+</html>
