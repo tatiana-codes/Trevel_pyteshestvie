@@ -26,7 +26,32 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "change-me")
-app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DATA_DIR / 'travel.db'}"
+database_url = os.getenv("DATABASE_URL")
+
+if database_url:
+    # Совместимость со строками Railway вида postgres://...
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace(
+            "postgres://",
+            "postgresql+psycopg://",
+            1
+        )
+    elif database_url.startswith("postgresql://"):
+        database_url = database_url.replace(
+            "postgresql://",
+            "postgresql+psycopg://",
+            1
+        )
+else:
+    # Локально сайт продолжит работать с SQLite
+    database_url = f"sqlite:///{DATA_DIR / 'travel.db'}"
+
+app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "pool_pre_ping": True,
+    "pool_recycle": 300,
+}
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
 
