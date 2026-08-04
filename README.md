@@ -1,4 +1,6 @@
-# Holy Cow Travel
+# AI Travel Agency
+
+![AI Travel Agency](assets/banner.png)
 
 Небольшой сайт туристического агентства на Flask.
 
