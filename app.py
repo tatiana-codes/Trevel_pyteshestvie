@@ -1,3 +1,4 @@
+import mimetypes
 import os
 import re
 import uuid
@@ -134,9 +135,25 @@ def index():
     return render_template("index.html", tours=tours)
 
 
-@app.route("/uploads/<path:filename>")
+PLACEHOLDER_IMAGE = "/static/images/tour-placeholder.jpg"
+
+
+@app.route("/uploads/<filename>")
 def uploaded_file(filename):
-    return send_file(UPLOAD_DIR / filename)
+    # Было <path:filename> — конвертер пропускает слеши, и через ../
+    # по этому адресу можно было скачать любой файл на сервере.
+    safe_name = secure_filename(filename)
+    path = UPLOAD_DIR / safe_name
+
+    if not path.is_file():
+        # Файла нет — показываем заглушку: дырка на странице выглядит
+        # хуже серого кадра, а ошибка 500 хуже всего.
+        return redirect(PLACEHOLDER_IMAGE)
+
+    # У старых файлов расширения нет, тип по имени не угадывается,
+    # и send_file без явного mimetype падает.
+    mimetype = mimetypes.guess_type(str(path))[0] or "image/jpeg"
+    return send_file(path, mimetype=mimetype)
 
 
 @app.post("/api/chat")
@@ -240,7 +257,13 @@ def add_tour():
     image_path = ""
     image = request.files.get("image")
     if image and image.filename:
-        filename = f"{uuid.uuid4().hex}_{secure_filename(image.filename)}"
+        # secure_filename выбрасывает кириллицу целиком: "фото.jpg" даёт "jpg",
+        # то есть файл сохранялся вообще без расширения. Берём расширение
+        # отдельно и не полагаемся на исходное имя.
+        ext = os.path.splitext(image.filename)[1].lower()
+        if ext not in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
+            ext = ".jpg"
+        filename = f"{uuid.uuid4().hex}{ext}"
         image.save(UPLOAD_DIR / filename)
         image_path = f"/uploads/{filename}"
 
