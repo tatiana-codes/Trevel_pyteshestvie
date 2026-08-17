@@ -19,9 +19,11 @@
         <li><a href="#chat">ИИ-консультант</a></li>
     </ul>
 
-    <a href="/admin/login" class="admin-btn" title="Вход администратора">
+    {% if session.get('admin') %}
+    <a href="/admin" class="admin-btn" title="Панель администратора">
         👤
     </a>
+    {% endif %}
 
 </nav>
   <div class="hero-content">
@@ -68,7 +70,7 @@
   </section>
 </main>
 
-<footer>© 2026 Holy Cow Travel · <a href="/admin/login">Администратор</a></footer>
+<footer>© 2026 Holy Cow Travel</footer>
 <script src="/static/app.js"></script>
 </body>
 </html>

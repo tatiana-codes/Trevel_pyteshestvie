@@ -1,3 +1,4 @@
+import json
 import mimetypes
 import os
 import re
@@ -5,6 +6,7 @@ import uuid
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
+from time import time
 
 from dotenv import load_dotenv
 from flask import (
@@ -102,7 +104,70 @@ def export_clients_excel():
     return path
 
 
-def extract_client_data(item, text):
+PARSER_INSTRUCTIONS = """
+Ты CRM-парсер туристического агентства.
+Извлеки данные клиента из сообщения и верни ТОЛЬКО JSON, без пояснений.
+
+Строго в таком формате:
+{
+  "name": "",
+  "phone": "",
+  "email": "",
+  "city_from": "",
+  "country": "",
+  "resort": "",
+  "people_count": "",
+  "budget": "",
+  "travel_dates": "",
+  "wishes": ""
+}
+
+Правила:
+- country — страна назначения: Турция, Египет, ОАЭ, Таиланд, Мальдивы, Греция и т.д.
+- people_count — только количество туристов. «Мы с мужем», «вдвоём», «нас двое» → "2".
+- travel_dates — только даты поездки, например «15–25 сентября» или «в августе».
+- budget — только бюджет, например «300000 рублей».
+- city_from — город вылета, например «Калининград».
+- wishes — пожелания к отелю, питанию, детям, пляжу.
+- Если данных нет — оставь пустую строку. Не помещай всё сообщение в travel_dates.
+"""
+
+# Как называть поля в сводке для менеджера
+DETAIL_TITLES = {
+    "city_from": "вылет из",
+    "country": "страна",
+    "resort": "курорт",
+    "people_count": "человек",
+    "budget": "бюджет",
+    "travel_dates": "даты",
+}
+
+
+def extract_client_data_with_ai(text):
+    """Разбирает сообщение моделью. При любой осечке возвращает пустой словарь."""
+    try:
+        response = client.responses.create(
+            model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
+            instructions=PARSER_INSTRUCTIONS,
+            input=text
+        )
+        raw = response.output_text.strip()
+
+        # модель нередко оборачивает ответ в ```json ... ```
+        raw = re.sub(r"^```(?:json)?", "", raw)
+        raw = re.sub(r"```$", "", raw).strip()
+
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else {}
+    except Exception as error:
+        app.logger.warning("Парсер клиента не сработал: %s", error)
+        return {}
+
+
+def extract_client_data_regex(text):
+    """Запасной разбор без модели: только имя, телефон и почта."""
+    result = {}
+
     name_match = re.search(
         r"(?:меня зовут|мо[её] имя)\s+([А-ЯЁA-Z][а-яёa-z-]{1,30})",
         text, re.IGNORECASE
@@ -111,13 +176,38 @@ def extract_client_data(item, text):
     email_match = re.search(r"[\w.+-]+@[\w.-]+\.[a-zA-Zа-яА-Я]{2,}", text)
 
     if name_match:
-        item.name = name_match.group(1).title()
+        result["name"] = name_match.group(1).title()
     if phone_match:
-        item.phone = phone_match.group(0).strip()
+        result["phone"] = phone_match.group(0).strip()
     if email_match:
-        item.email = email_match.group(0).lower()
+        result["email"] = email_match.group(0).lower()
 
-    item.wishes = (item.wishes + "\n" + text).strip()[-5000:]
+    return result
+
+
+def extract_client_data(item, text):
+    # Модель понимает «мы с мужем» и «в конце августа», регулярки — нет.
+    # Но если запрос к модели не прошёл, старый разбор всё равно отработает.
+    data = extract_client_data_with_ai(text) or extract_client_data_regex(text)
+
+    for field in ("name", "phone", "email"):
+        value = str(data.get(field) or "").strip()
+        if value:
+            setattr(item, field, value)
+
+    details = [
+        f"{title}: {str(data.get(key)).strip()}"
+        for key, title in DETAIL_TITLES.items()
+        if str(data.get(key) or "").strip()
+    ]
+
+    addition = text
+    if details:
+        addition += "\n[разобрано] " + "; ".join(details)
+    if str(data.get("wishes") or "").strip():
+        addition += "\n[пожелания] " + str(data["wishes"]).strip()
+
+    item.wishes = (item.wishes + "\n" + addition).strip()[-5000:]
 
 
 def admin_required(view):
@@ -215,8 +305,33 @@ def chat():
     return jsonify({"answer": answer})
 
 
+MAX_LOGIN_ATTEMPTS = 5
+LOGIN_BLOCK_SECONDS = 300
+login_attempts = {}  # ip -> (сколько неудач, когда началась серия)
+
+
+def client_ip():
+    # Railway отдаёт приложение через прокси: настоящий адрес приходит
+    # в заголовке, а не в remote_addr
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    return forwarded.split(",")[0].strip() or request.remote_addr or "unknown"
+
+
 @app.route("/admin/login", methods=["GET", "POST"])
 def admin_login():
+    ip = client_ip()
+    attempts, started_at = login_attempts.get(ip, (0, 0))
+
+    # серия неудач протухла — забываем её
+    if started_at and time() - started_at > LOGIN_BLOCK_SECONDS:
+        attempts, started_at = 0, 0
+        login_attempts.pop(ip, None)
+
+    if attempts >= MAX_LOGIN_ATTEMPTS:
+        wait = int(LOGIN_BLOCK_SECONDS - (time() - started_at))
+        flash(f"Слишком много попыток. Попробуйте через {max(wait, 1) // 60 + 1} мин.")
+        return render_template("login.html")
+
     if request.method == "POST":
         login = request.form.get("login", "")
         password = request.form.get("password", "")
@@ -229,8 +344,11 @@ def admin_login():
             if stored_hash else password == plain_password
         )
         if login == expected_login and valid_password:
+            login_attempts.pop(ip, None)
             session["admin"] = True
             return redirect(url_for("admin"))
+
+        login_attempts[ip] = (attempts + 1, started_at or time())
         flash("Неверный логин или пароль")
     return render_template("login.html")
 
